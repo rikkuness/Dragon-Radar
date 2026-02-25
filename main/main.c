@@ -19,7 +19,6 @@
 static bool display_active = true;
 static uint32_t last_activity_time = 0;
 static PressEvent last_button_state = NONE_PRESS;
-static bool is_dissolving = false;  /* True when dissolve animation is playing before sleep */
 
 extern PressEvent BOOT_KEY_State;  /* From Button_Driver.h */
 
@@ -54,10 +53,10 @@ void Driver_Init(void)
 void app_main(void)
 {
     button_Init();
-    // Wireless_Init();  /* Disabled: WiFi/BLE not needed for radar */
+    // Wireless_Init();  /* Disabled: WiFi/BLE not needed */
     Driver_Init();
     LCD_Init();
-    // SD_Init();  /* Disabled: SD card not needed for radar */
+    // SD_Init();  /* Disabled: SD card not needed */
     LVGL_Init();
 /********************* Demo *********************/
     grid_screen_show();
@@ -79,48 +78,36 @@ void app_main(void)
         /* Handle display timeout (30 seconds of inactivity) */
         if (display_active) {
             uint32_t idle_time = current_time - last_activity_time;
-            if (idle_time > 30000 && !is_dissolving) {  /* 30 seconds */
-                /* Start dissolve animation before sleep */
-                is_dissolving = true;
-                grid_screen_start_dissolve();
-                printf("Display timeout - starting dissolve animation\n");
+            if (idle_time > 30000) {  /* 30 seconds */
+                Set_Backlight(0);  /* Turn off backlight */
+                display_active = false;
+                printf("Display OFF\n");
             }
         }
 
-        /* Handle dissolve completion */
-        if (is_dissolving && grid_screen_is_dissolve_complete()) {
-            /* Turn off display after dissolve finishes */
-            Set_Backlight(0);  /* Turn off backlight */
-            display_active = false;
-            is_dissolving = false;
-            printf("Display OFF - dissolve complete\n");
-        }
 
         /* Handle button press to wake display */
         if (BOOT_KEY_State != last_button_state && BOOT_KEY_State != NONE_PRESS) {
+            printf("Button state changed: %d\n", BOOT_KEY_State);
             if (!display_active) {
                 /* Wake display and restart scan */
                 display_active = true;
-                is_dissolving = false;  /* Cancel dissolve if it was playing */
                 Set_Backlight(100);  /* Turn on full brightness */
                 grid_screen_start_scan();  /* Restart scan effect */
                 grid_screen_update();  /* Initialize scan state */
                 last_activity_time = current_time;
                 printf("Display ON - restarted scan\n");
             } else {
-                /* Reset idle timer on any activity */
-                if (is_dissolving) {
-                    /* Cancel dissolve and keep display on */
-                    is_dissolving = false;
-                    printf("Display - dissolve cancelled by button press\n");
-                }
-                last_activity_time = current_time;
+                // last_activity_time = current_time;
+                Set_Backlight(0);  /* Turn off backlight */
+                display_active = false;
+                printf("Display OFF\n");
             }
         }
         last_button_state = BOOT_KEY_State;
 
         /* Update radar if display is active or dissolving */
-        if (display_active || is_dissolving) {
+        if (display_active) {
             // Update radar heading from gyro rotation
             grid_screen_update();
         }

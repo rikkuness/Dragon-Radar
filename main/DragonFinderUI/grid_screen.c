@@ -1,5 +1,6 @@
 #include "grid_screen.h"
 #include "QMI8658.h"
+#include "Buzzer.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,8 +10,8 @@
 #define COLS 10
 #define NUM_TARGETS 8
 #define MAX_DISTANCE 50.0f
-#define DOT_SIZE_MIN 5
-#define DOT_SIZE_MAX 20
+#define DOT_SIZE_MIN 3
+#define DOT_SIZE_MAX 15
 
 /* Static variables for grid state */
 static lv_obj_t * grid_screen = NULL;
@@ -19,11 +20,7 @@ static uint32_t last_update_time = 0;
 static int visible_dot_count = 0;  /* Number of dots to show in scan mode */
 static uint32_t scan_start_time = 0;  /* When scan effect started */
 static bool in_scan_mode = true;  /* True during initial scan */
-
-/* Dissolve animation state */
-static bool is_dissolving = false;  /* True when dissolve animation is running */
-static uint32_t dissolve_start_time = 0;  /* When dissolve started */
-static const uint32_t DISSOLVE_DURATION = 500;  /* Milliseconds */
+static uint32_t buzzer_on_time = 0;  /* When buzzer was turned on for dot appearance */
 
 /* Radar targets - positions will be randomized on init */
 static radar_target_t radar_targets[NUM_TARGETS];
@@ -134,7 +131,7 @@ static void draw_fuzzy_dot(lv_draw_ctx_t *draw_ctx, int px, int py,
 	float dist_to_center = sqrtf((float)(dx * dx + dy * dy));
 
 	/* Max distance is diagonal from center to corner */
-	float max_dist = sqrtf((float)(center_x * center_x + center_y * center_y));
+	float max_dist = sqrtf((float)(center_x * center_x + center_y * center_y)) - 10.0f;  /* Subtract small margin to avoid zero size at corners */
 
 	/* Normalize distance to 0-1 range (0 at center, 1 at corners) */
 	float normalized_dist = dist_to_center / max_dist;
@@ -156,7 +153,7 @@ static void draw_fuzzy_dot(lv_draw_ctx_t *draw_ctx, int px, int py,
 	rect_dsc.border_width = 0;
 
 	/* Much enhanced shadow for extreme fuzziness effect */
-	rect_dsc.shadow_width = 15;  /* Large blur radius */
+	rect_dsc.shadow_width = 30;  /* Large blur radius */
 	rect_dsc.shadow_color = lv_color_hex(0xFFFF00 | brightness);
 	rect_dsc.shadow_opa = LV_OPA_80;  /* Very opaque shadow */
 	rect_dsc.shadow_ofs_x = 0;
@@ -253,101 +250,8 @@ static void draw_grid_and_radar_cb(lv_event_t *e) {
 
 	/* Draw red triangle at center */
 	draw_center_triangle(draw_ctx, scr_w / 2, scr_h / 2, DOT_SIZE_MAX);
-
-	/* Draw dissolve overlay if active */
-	if (is_dissolving) {
-		uint32_t current_time = lv_tick_get();
-		uint32_t elapsed = current_time - dissolve_start_time;
-
-		if (elapsed >= DISSOLVE_DURATION) {
-			/* Dissolve complete, fill entire screen black */
-			lv_draw_rect_dsc_t rect_dsc;
-			lv_draw_rect_dsc_init(&rect_dsc);
-			rect_dsc.bg_color = lv_color_black();
-			rect_dsc.bg_opa = LV_OPA_COVER;
-			rect_dsc.border_width = 0;
-
-			lv_area_t area;
-			area.x1 = 0;
-			area.y1 = 0;
-			area.x2 = scr_w - 1;
-			area.y2 = scr_h - 1;
-			lv_draw_rect(draw_ctx, &rect_dsc, &area);
-		} else {
-			/* Animate dissolve: circle expands from center to edges */
-			float progress = (float)elapsed / (float)DISSOLVE_DURATION;  /* 0.0 to 1.0 */
-
-			int center_x = scr_w / 2;
-			int center_y = scr_h / 2;
-
-			/* Max radius: diagonal from center to corner */
-			float max_radius = sqrtf((float)(center_x * center_x + center_y * center_y));
-
-			/* Dissolve radius: starts at max (nothing masked), shrinks to 0 (fully masked) */
-			float dissolve_radius = max_radius * (1.0f - progress);
-
-			/* Draw black circle that expands from edges to center */
-			lv_draw_rect_dsc_t circle_dsc;
-			lv_draw_rect_dsc_init(&circle_dsc);
-			circle_dsc.bg_color = lv_color_black();
-			circle_dsc.bg_opa = LV_OPA_COVER;
-			circle_dsc.border_width = 0;
-			circle_dsc.radius = LV_RADIUS_CIRCLE;
-
-			int radius_int = (int)dissolve_radius;
-			if (radius_int > 0) {
-				lv_area_t circle_area;
-				circle_area.x1 = center_x - radius_int;
-				circle_area.y1 = center_y - radius_int;
-				circle_area.x2 = center_x + radius_int;
-				circle_area.y2 = center_y + radius_int;
-
-				/* Draw the transparent area (everything outside the circle) in black */
-				/* We need to draw the corners and edges black. Draw a large black rectangle */
-				/* and punch out a circular hole for the non-dissolved area */
-
-				/* Fill entire screen with black first */
-				lv_area_t full_screen;
-				full_screen.x1 = 0;
-				full_screen.y1 = 0;
-				full_screen.x2 = scr_w - 1;
-				full_screen.y2 = scr_h - 1;
-
-				lv_draw_rect_dsc_t bg_dsc;
-				lv_draw_rect_dsc_init(&bg_dsc);
-				bg_dsc.bg_color = lv_color_black();
-				bg_dsc.bg_opa = LV_OPA_COVER;
-				bg_dsc.border_width = 0;
-
-				lv_draw_rect(draw_ctx, &bg_dsc, &full_screen);
-
-				/* Draw the un-dissolved circular area with the radar still visible */
-				/* (We need to redraw the circle content without black overlay) */
-				lv_draw_rect_dsc_t circle_clear;
-				lv_draw_rect_dsc_init(&circle_clear);
-				circle_clear.bg_opa = LV_OPA_TRANSP;  /* Transparent fill */
-				circle_clear.border_width = 0;
-				circle_clear.radius = LV_RADIUS_CIRCLE;
-
-				lv_draw_rect(draw_ctx, &circle_clear, &circle_area);
-			}
-		}
-	}
 }
 
-/* Start the dissolve animation (for sleep effect) */
-void grid_screen_start_dissolve(void) {
-	is_dissolving = true;
-	dissolve_start_time = lv_tick_get();
-}
-
-/* Check if dissolve animation is complete */
-bool grid_screen_is_dissolve_complete(void) {
-	if (!is_dissolving) return true;
-
-	uint32_t elapsed = lv_tick_get() - dissolve_start_time;
-	return elapsed >= DISSOLVE_DURATION;
-}
 
 /* Initialize the grid screen with radar */
 void grid_screen_show(void) {
@@ -384,6 +288,12 @@ void grid_screen_update(void) {
 	/* Calculate time delta in milliseconds first */
 	int32_t time_delta_ms = (int32_t)(current_time - last_update_time);
 
+	/* Turn off buzzer if it was turned on and has been on for more than 100ms */
+	if (buzzer_on_time > 0 && (current_time - buzzer_on_time) > 10) {
+		Buzzer_Off();
+		buzzer_on_time = 0;
+	}
+
 	/* Update on subsequent calls (skip first call to avoid huge jumps) */
 	if (last_update_time > 0 && time_delta_ms > 0 && time_delta_ms < 1000) {
 		/* Convert milliseconds to seconds */
@@ -406,12 +316,19 @@ void grid_screen_update(void) {
 			visible_dot_count = 1;  /* Show first dot immediately */
 		} else {
 			uint32_t elapsed = current_time - scan_start_time;
-			/* Show one dot every 150ms */
-			int new_dot_count = (elapsed / 150) + 1;
+			/* Show one dot every 250ms */
+			int new_dot_count = (elapsed / 250) + 1;
 			if (new_dot_count > NUM_TARGETS) {
 				new_dot_count = NUM_TARGETS;
 				in_scan_mode = false;  /* Scan complete */
 			}
+			
+			// Do a beep when each new dot appears (optional, can be commented out if not desired)
+			if (new_dot_count > visible_dot_count) {
+				Buzzer_On();
+				buzzer_on_time = current_time;  /* Will be turned off in main loop after short duration */
+			}
+
 			visible_dot_count = new_dot_count;
 		}
 	}
