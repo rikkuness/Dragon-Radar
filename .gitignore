@@ -1,0 +1,17 @@
+.pio/
+.devcontainer/
+build/
+
+# TODO: lvgl should be added as a submodule and ignored here
+components/
+
+.DS_Store
+*.bin
+*.elf
+*.map
+*.o
+*.d
+*.log
+*.zip
+*.tar.gz
+*.img
