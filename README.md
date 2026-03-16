@@ -25,7 +25,9 @@ This project was designed around the [ESP32-S3 2.8" Round Display Development Bo
 | PCF85063 RTC              | Real-time clock                       |
 | TCA9554 I2C GPIO expander | Additional I/O                        |
 | Piezo buzzer              | Audio feedback                        |
-| LiPo battery              | Power (monitored via ADC on GPIO4)    |
+| [1200mAh LiPo battery](https://thepihut.com/products/1200mah-3-7v-lipo-battery-1-25mm-picoblade-connector) | Power (monitored via ADC on GPIO4) |
+
+> **Warning:** The battery linked above has its connector pins in the **reverse order** from what the ESP32-S3 board expects. You must swap the wires in the PicoBlade connector before plugging it in, or you risk damaging the board.
 
 Hardware design files are in the [hardware/](hardware/) directory.
 
