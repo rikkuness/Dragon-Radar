@@ -15,6 +15,8 @@ A prop replica of the Dragon Radar from _Dragon Ball Z_, built on an ESP32-S3 wi
 
 ## Hardware
 
+This project was designed around the [ESP32-S3 2.8" Round Display Development Board](https://thepihut.com/products/esp32-s3-development-board-with-2-8-ips-capacitive-touch-round-display-480-x-480) (available from The Pi Hut), which integrates the MCU, display, IMU, RTC, and battery management onto a single board.
+
 | Component                 | Role                                  |
 | ------------------------- | ------------------------------------- |
 | ESP32-S3 (8MB PSRAM)      | Main MCU                              |
